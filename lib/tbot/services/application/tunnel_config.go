@@ -21,6 +21,7 @@ package application
 import (
 	"net"
 	"net/url"
+	"time"
 
 	"github.com/gravitational/trace"
 	"github.com/jonboulle/clockwork"
@@ -33,6 +34,10 @@ import (
 )
 
 const TunnelServiceType = "application-tunnel"
+
+// minResponseTimeout guards against a timeout so short that healthy
+// connections are reset.
+const minResponseTimeout = time.Second
 
 // TunnelConfig opens an authenticated tunnel for Application
 // Access.
@@ -48,6 +53,14 @@ type TunnelConfig struct {
 	// AppName should be the name of the application as registered in Teleport
 	// that you wish to tunnel to.
 	AppName string `yaml:"app_name"`
+	// ResponseTimeout resets a tunnel connection after this long without
+	// application payload in either direction, once the client has sent
+	// something, so the client fails immediately rather than waiting on a
+	// connection that is alive at the TCP level but dead at the application
+	// level. Keepalive pings do not count. Request boundaries are not visible
+	// in the tunnel, so a connection left idle between requests is also reset.
+	// Unset disables it; the minimum is 1s.
+	ResponseTimeout time.Duration `yaml:"response_timeout,omitempty"`
 
 	// CredentialLifetime contains configuration for how long credentials will
 	// last and the frequency at which they'll be renewed.
@@ -111,6 +124,10 @@ func (t *TunnelConfig) CheckAndSetDefaults(scoped bool) error {
 	}
 	if _, err := url.Parse(t.Listen); err != nil {
 		return trace.Wrap(err, "parsing listen")
+	}
+
+	if t.ResponseTimeout != 0 && t.ResponseTimeout < minResponseTimeout {
+		return trace.BadParameter("response_timeout: must be at least %s", minResponseTimeout)
 	}
 	if t.clock == nil {
 		t.clock = clockwork.NewRealClock()

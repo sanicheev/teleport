@@ -251,6 +251,8 @@ func (s *TunnelService) buildLocalProxyConfig(ctx context.Context) (lpCfg alpnpr
 	lpConfig := alpnproxy.LocalProxyConfig{
 		Middleware: middleware,
 
+		Log:                s.log,
+		ResponseTimeout:    s.cfg.ResponseTimeout,
 		RemoteProxyAddr:    proxyAddr,
 		ParentContext:      ctx,
 		Protocols:          []common.Protocol{alpnProtocolForApp(app)},

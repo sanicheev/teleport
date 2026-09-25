@@ -41,6 +41,7 @@ func TestApplicationTunnelService_YAML(t *testing.T) {
 					TTL:             1 * time.Minute,
 					RenewalInterval: 30 * time.Second,
 				},
+				ResponseTimeout: 30 * time.Second,
 			},
 		},
 	}
@@ -107,6 +108,45 @@ func TestApplicationTunnelService_CheckAndSetDefaults(t *testing.T) {
 				}
 			},
 			wantErr: "roles: the roles field is no longer supported",
+		},
+		{
+			name: "valid with response timeout",
+			in: func() *TunnelConfig {
+				return &TunnelConfig{
+					Listen:          "tcp://0.0.0.0:3621",
+					AppName:         "my-app",
+					ResponseTimeout: 30 * time.Second,
+					clock:           clock,
+				}
+			},
+			want: &TunnelConfig{
+				Listen:          "tcp://0.0.0.0:3621",
+				AppName:         "my-app",
+				ResponseTimeout: 30 * time.Second,
+				clock:           clock,
+			},
+		},
+		{
+			name: "response timeout below the minimum",
+			in: func() *TunnelConfig {
+				return &TunnelConfig{
+					Listen:          "tcp://0.0.0.0:3621",
+					AppName:         "my-app",
+					ResponseTimeout: 100 * time.Millisecond,
+				}
+			},
+			wantErr: "response_timeout: must be at least 1s",
+		},
+		{
+			name: "negative response timeout",
+			in: func() *TunnelConfig {
+				return &TunnelConfig{
+					Listen:          "tcp://0.0.0.0:3621",
+					AppName:         "my-app",
+					ResponseTimeout: -time.Second,
+				}
+			},
+			wantErr: "response_timeout: must be at least 1s",
 		},
 		{
 			name:   "scoped",

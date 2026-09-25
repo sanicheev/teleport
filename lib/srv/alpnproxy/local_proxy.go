@@ -92,6 +92,12 @@ type LocalProxyConfig struct {
 	// needs to always have cert loaded for postgres in case it is needed,
 	// but only use the cert as needed.
 	CheckCertNeeded bool
+	// ResponseTimeout resets a tunnel connection after this long without
+	// application payload in either direction, once the client has sent
+	// something. Keepalive pings do not count. Idle connections between
+	// requests are reset too, since request boundaries are not visible here.
+	// Zero, the default, disables it.
+	ResponseTimeout time.Duration
 	// verifyUpstreamConnection is a callback function to verify upstream connection state.
 	verifyUpstreamConnection func(tls.ConnectionState) error
 	// onSetCert is a callback when lp.SetCert is called.
@@ -118,6 +124,9 @@ func (cfg *LocalProxyConfig) CheckAndSetDefaults() error {
 	}
 	if cfg.ParentContext == nil {
 		return trace.BadParameter("missing parent context")
+	}
+	if cfg.ResponseTimeout < 0 {
+		return trace.BadParameter("response timeout must not be negative")
 	}
 	if cfg.Clock == nil {
 		cfg.Clock = clockwork.NewRealClock()
@@ -243,7 +252,18 @@ func (l *LocalProxy) handleDownstreamConnection(ctx context.Context, downstreamC
 	}
 	defer upstreamConn.Close()
 
-	return trace.Wrap(utils.ProxyConn(ctx, downstreamConn, upstreamConn))
+	return trace.Wrap(l.proxyConn(ctx, downstreamConn, upstreamConn))
+}
+
+// proxyConn proxies traffic between the client and the upstream connection,
+// enforcing ResponseTimeout if set.
+func (l *LocalProxy) proxyConn(ctx context.Context, clientConn, upstreamConn net.Conn) error {
+	if l.cfg.ResponseTimeout > 0 {
+		return trace.Wrap(proxyConnWithResponseTimeout(
+			ctx, clientConn, upstreamConn, l.cfg.ResponseTimeout, l.cfg.Clock, l.cfg.Log,
+		))
+	}
+	return trace.Wrap(utils.ProxyConn(ctx, clientConn, upstreamConn))
 }
 
 // HandleTCPConnector injects an inbound TCP connection (via [connector]) that doesn't come in through any
@@ -274,7 +294,7 @@ func (l *LocalProxy) HandleTCPConnector(ctx context.Context, connector func() (n
 	}
 	defer downstreamConn.Close()
 
-	return trace.Wrap(utils.ProxyConn(ctx, downstreamConn, upstreamConn))
+	return trace.Wrap(l.proxyConn(ctx, downstreamConn, upstreamConn))
 }
 
 // dialALPNMaybePing is a helper to dial using an ALPNDialer, it wraps the tls conn in a ping conn if

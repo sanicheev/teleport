@@ -1235,6 +1235,21 @@ listen: tcp://127.0.0.1:8084
 # app_name is the name of the application, as configured in Teleport, that
 # the service should open a tunnel to.
 app_name: my-application
+# response_timeout optionally resets a connection after this long without
+# application payload in either direction, once the client has sent something.
+# Keepalive pings do not count. On expiry both ends are reset so the client
+# fails immediately instead of waiting for a reply that is not coming.
+#
+# Setting it protects clients that cannot recover from a hung connection: a
+# connection can stay alive at the TCP level, for example when a load balancer
+# sits in front of the Proxy Service, long after the application stops
+# responding. The minimum is 1s.
+#
+# The tunnel carries an opaque byte stream, so request boundaries are invisible
+# and a connection left idle between requests is reset as well. Leave it unset
+# for clients that keep connections idle, or for applications that can be slow
+# to respond.
+response_timeout: 30s
 # name optionally overrides the name of the service used in logs and the `/readyz`
 # endpoint. It must only contain letters, numbers, hyphens, underscores, and plus
 # symbols.
